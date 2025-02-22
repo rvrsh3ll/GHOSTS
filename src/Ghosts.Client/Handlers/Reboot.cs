@@ -2,28 +2,28 @@
 
 using System.Threading;
 using Ghosts.Domain;
+using Ghosts.Domain.Code;
 
-namespace Ghosts.Client.Handlers
+namespace Ghosts.Client.Handlers;
+
+public class Reboot : BaseHandler
 {
-    public class Reboot : BaseHandler
+    public Reboot(TimelineHandler handler)
     {
-        public Reboot(TimelineHandler handler)
+        foreach (var timelineEvent in handler.TimeLineEvents)
         {
-            foreach (var timelineEvent in handler.TimeLineEvents)
+            WorkingHours.Is(handler);
+
+            if (timelineEvent.DelayBeforeActual > 0)
+                Thread.Sleep(timelineEvent.DelayBeforeActual);
+
+            Log.Trace($"Reboot: {timelineEvent.Command} with delay after of {timelineEvent.DelayAfterActual}");
+
+            switch (timelineEvent.Command)
             {
-                Infrastructure.WorkingHours.Is(handler);
-
-                if (timelineEvent.DelayBefore > 0)
-                    Thread.Sleep(timelineEvent.DelayBefore);
-
-                Log.Trace($"Reboot: {timelineEvent.Command} with delay after of {timelineEvent.DelayAfter}");
-
-                switch (timelineEvent.Command)
-                {
-                    default:
-                        System.Diagnostics.Process.Start("shutdown.exe", "-r -t 0");
-                        break;
-                }
+                default:
+                    System.Diagnostics.Process.Start("shutdown.exe", "-r -t 0");
+                    break;
             }
         }
     }

@@ -1,9 +1,14 @@
 ﻿// Copyright 2017 Carnegie Mellon University. All Rights Reserved. See LICENSE.md file for terms.
 
+using System.IO;
+using ghosts.api.Areas.Animator.Infrastructure.Models;
+using ghosts.api.Infrastructure.Models;
 using Ghosts.Api.Infrastructure.Extensions;
-using Ghosts.Api.Models;
 using Ghosts.Domain.Messages.MesssagesForServer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.Extensions.Configuration;
+using NLog;
 
 namespace Ghosts.Api.Infrastructure.Data
 {
@@ -16,6 +21,7 @@ namespace Ghosts.Api.Infrastructure.Data
 
         public DbSet<Machine> Machines { get; set; }
         public DbSet<Group> Groups { get; set; }
+        public DbSet<GroupMachine> GroupMachines { get; set; }
 
         public DbSet<Machine.MachineHistoryItem> HistoryMachine { get; set; }
         public DbSet<HistoryHealth> HistoryHealth { get; set; }
@@ -36,42 +42,53 @@ namespace Ghosts.Api.Infrastructure.Data
         public DbSet<Survey.LocalUser> LocalUsers { get; set; }
         public DbSet<Survey.Port> Ports { get; set; }
 
+        public DbSet<NpcRecord> Npcs { get; set; }
+        public DbSet<NPCIpAddress> NpcIps { get; set; }
+
+        public DbSet<NpcActivity> NpcActivities { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
             // Add your customizations after calling base.OnModelCreating(modelBuilder);
 
-            modelBuilder.Entity<Machine>().HasIndex(o => new {o.CreatedUtc});
-            modelBuilder.Entity<Machine>().HasIndex(o => new {o.Status});
-            modelBuilder.Entity<Machine>().HasIndex(o => new {o.LastReportedUtc});
+            modelBuilder.ApplyConfiguration(new MachineUpdateConfiguration());
 
-            modelBuilder.Entity<Machine.MachineHistoryItem>().HasIndex(o => new {o.CreatedUtc});
 
-            modelBuilder.Entity<HistoryHealth>().HasIndex(o => new {o.CreatedUtc});
+            modelBuilder.Entity<NpcRecord>().Property(o => o.NpcProfile).HasColumnType("jsonb");
+            modelBuilder.Entity<NpcRecord>().Property(o => o.NpcSocialGraph).HasColumnType("jsonb");
 
-            modelBuilder.Entity<HistoryTimeline>().HasIndex(o => new {o.CreatedUtc});
-            modelBuilder.Entity<HistoryTimeline>().HasIndex(o => new {o.Tags});
+            modelBuilder.Entity<Machine>().HasIndex(o => new { o.CreatedUtc });
+            modelBuilder.Entity<Machine>().HasIndex(o => new { o.Status });
+            modelBuilder.Entity<Machine>().HasIndex(o => new { o.LastReportedUtc });
 
-            modelBuilder.Entity<MachineUpdate>().HasIndex(o => new {o.CreatedUtc});
-            modelBuilder.Entity<MachineUpdate>().HasIndex(o => new {o.ActiveUtc});
-            modelBuilder.Entity<MachineUpdate>().HasIndex(o => new {o.Status});
+            modelBuilder.Entity<Machine.MachineHistoryItem>().HasIndex(o => new { o.CreatedUtc });
 
-            modelBuilder.Entity<GroupMachine>().HasIndex(o => new {o.MachineId});
+            modelBuilder.Entity<HistoryHealth>().HasIndex(o => new { o.CreatedUtc });
 
-            modelBuilder.Entity<Group>().HasIndex(o => new {o.Name});
+            modelBuilder.Entity<HistoryTimeline>().HasIndex(o => new { o.CreatedUtc });
+            modelBuilder.Entity<HistoryTimeline>().HasIndex(o => new { o.Tags });
 
-            modelBuilder.Entity<Webhook>().HasIndex(o => new {o.Status});
-            modelBuilder.Entity<Webhook>().HasIndex(o => new {o.CreatedUtc});
+            modelBuilder.Entity<MachineUpdate>().HasIndex(o => new { o.CreatedUtc });
+            modelBuilder.Entity<MachineUpdate>().HasIndex(o => new { o.ActiveUtc });
+            modelBuilder.Entity<MachineUpdate>().HasIndex(o => new { o.Status });
 
-            modelBuilder.Entity<Survey>().HasIndex(o => new {o.MachineId});
-            modelBuilder.Entity<Survey.DriveInfo>().HasIndex(o => new {o.SurveyId});
-            modelBuilder.Entity<Survey.EventLog>().HasIndex(o => new {o.SurveyId});
-            modelBuilder.Entity<Survey.Interface>().HasIndex(o => new {o.SurveyId});
-            modelBuilder.Entity<Survey.LocalProcess>().HasIndex(o => new {o.SurveyId});
-            modelBuilder.Entity<Survey.LocalUser>().HasIndex(o => new {o.SurveyId});
-            modelBuilder.Entity<Survey.Port>().HasIndex(o => new {o.SurveyId});
-            modelBuilder.Entity<Survey.EventLog.EventLogEntry>().HasIndex(o => new {o.EventLogId});
-            modelBuilder.Entity<Survey.Interface.InterfaceBinding>().HasIndex(o => new {o.InterfaceId});
+            modelBuilder.Entity<GroupMachine>().HasIndex(o => new { o.MachineId });
+
+            modelBuilder.Entity<Group>().HasIndex(o => new { o.Name });
+
+            modelBuilder.Entity<Webhook>().HasIndex(o => new { o.Status });
+            modelBuilder.Entity<Webhook>().HasIndex(o => new { o.CreatedUtc });
+
+            modelBuilder.Entity<Survey>().HasIndex(o => new { o.MachineId });
+            modelBuilder.Entity<Survey.DriveInfo>().HasIndex(o => new { o.SurveyId });
+            modelBuilder.Entity<Survey.EventLog>().HasIndex(o => new { o.SurveyId });
+            modelBuilder.Entity<Survey.Interface>().HasIndex(o => new { o.SurveyId });
+            modelBuilder.Entity<Survey.LocalProcess>().HasIndex(o => new { o.SurveyId });
+            modelBuilder.Entity<Survey.LocalUser>().HasIndex(o => new { o.SurveyId });
+            modelBuilder.Entity<Survey.Port>().HasIndex(o => new { o.SurveyId });
+            modelBuilder.Entity<Survey.EventLog.EventLogEntry>().HasIndex(o => new { o.EventLogId });
+            modelBuilder.Entity<Survey.Interface.InterfaceBinding>().HasIndex(o => new { o.InterfaceId });
 
             foreach (var entity in modelBuilder.Model.GetEntityTypes())
             {
@@ -85,6 +102,27 @@ namespace Ghosts.Api.Infrastructure.Data
                 foreach (var index in entity.GetIndexes())
                     index.SetDatabaseName(index.GetDatabaseName().ToCondensedLowerCase());
             }
+        }
+    }
+
+    public class ApplicationDbContextFactory : IDesignTimeDbContextFactory<ApplicationDbContext>
+    {
+        private static readonly Logger _log = LogManager.GetCurrentClassLogger();
+        public ApplicationDbContext CreateDbContext(string[] args)
+        {
+            var path = $"{Directory.GetCurrentDirectory()}/../ghosts.api/";
+            _log.Trace(path);
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(path)
+                .AddJsonFile("appsettings.json")
+                .Build();
+
+            var connectionString = configuration.GetConnectionString("DefaultConnection");
+
+            var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
+            optionsBuilder.UseNpgsql(connectionString, x => x.MigrationsAssembly("ghosts.api.migrations"));
+
+            return new ApplicationDbContext(optionsBuilder.Options);
         }
     }
 }

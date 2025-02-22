@@ -4,16 +4,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using Ghosts.Api.Models;
+using ghosts.api.Infrastructure.Models;
 using NLog;
 
 namespace Ghosts.Api.Infrastructure
 {
     public static class GroupNames
     {
-        private static readonly Logger log = LogManager.GetCurrentClassLogger();
+        private static readonly Logger _log = LogManager.GetCurrentClassLogger();
 
-        private static string FormatToken(List<char> delimeters, ApiDetails.ClientOptions.GroupingOptions.GroupingDefinitionOption d, string o)
+        private static string FormatToken(List<char> delimeters, ApplicationSettings.GroupingOptions.GroupingDefinitionOption d, string o)
         {
             // replace
             foreach (var (key, value) in d.Replacements) o = o.Replace(key, value);
@@ -30,8 +30,8 @@ namespace Ghosts.Api.Infrastructure
 
             try
             {
-                var groupNameFormat = Program.ClientConfig.Grouping.GroupName;
-                var delimeters = Program.ClientConfig.Grouping.GroupDelimiters;
+                var groupNameFormat = Program.ApplicationSettings.Grouping.GroupName;
+                var delimeters = Program.ApplicationSettings.Grouping.GroupDelimiters;
 
                 var host = machine.Host;
                 var domain = machine.Domain;
@@ -39,7 +39,7 @@ namespace Ghosts.Api.Infrastructure
                 var fqdn = machine.FQDN;
                 var name = machine.Name;
 
-                foreach (var d in Program.ClientConfig.Grouping.GroupingDefinition)
+                foreach (var d in Program.ApplicationSettings.Grouping.GroupingDefinition)
                     switch (d.Value)
                     {
                         case "host":
@@ -73,9 +73,9 @@ namespace Ghosts.Api.Infrastructure
                     for (var j = 0; j < i; j++)
                         g.Append(nameParts[j]).Append(delimeters[0]);
 
-                    list.Add(g.Append("*").ToString().TrimEnd(Convert.ToChar(delimeters[0])));
+                    list.Add(g.Append('*').ToString().TrimEnd(Convert.ToChar(delimeters[0])));
 
-                    if (list.Count > Program.ClientConfig.Grouping.GroupDepth)
+                    if (list.Count > Program.ApplicationSettings.Grouping.GroupDepth)
                     {
                         // groups deeper than 3 become a performance issue
                         break;
@@ -84,7 +84,7 @@ namespace Ghosts.Api.Infrastructure
             }
             catch (Exception e)
             {
-                log.Trace(e);
+                _log.Trace(e);
             }
 
             return list;

@@ -37,12 +37,17 @@ namespace Ghosts.Client.Infrastructure
 
         public string GetProperty(string credId, string prop)
         {
-            
+
             if (this.Data != null && this.Data.ContainsKey(credId))
             {
                 if (this.Data[credId].ContainsKey(prop)) return this.Data[credId][prop];
             }
             return null;
+        }
+
+        public string GetDomain(string credId)
+        {
+            return GetProperty(credId, "domain");
         }
 
         public string GetUsername(string credId)
@@ -57,7 +62,8 @@ namespace Ghosts.Client.Infrastructure
             else return null;
         }
 
+
     }
 
-       
+
 }

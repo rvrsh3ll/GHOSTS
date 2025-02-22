@@ -1,56 +1,81 @@
 ﻿// Copyright 2017 Carnegie Mellon University. All Rights Reserved. See LICENSE.md file for terms.
 
 using System;
+using System.Linq;
 using System.Threading;
 using NLog;
 
 namespace Ghosts.Domain.Code
 {
-    /// <summary>
-    /// In and out of office hour management, used to have fuzz, but now does not (6.0.2.6)
-    /// </summary>
     public static class WorkingHours
     {
         private static readonly Logger _log = LogManager.GetCurrentClassLogger();
-        
+
         public static void Is(TimelineHandler handler)
         {
-            var timeOn = handler.UtcTimeOn;
-            var timeOff = handler.UtcTimeOff;
-            var defaultTimespan = new TimeSpan(0, 0, 0);
+            var utcNow = DateTime.UtcNow;
+            var today = utcNow.Date;
+            var timeOnUtc = today.Add(handler.UtcTimeOn);
+            var timeOffUtc = today.Add(handler.UtcTimeOff);
+            var isOvernight = timeOffUtc < timeOnUtc;
 
-            if (timeOn == defaultTimespan && timeOff == defaultTimespan) //ignore timelines that are unset (00:00:00)
+            if (handler.UtcTimeOn == TimeSpan.Zero && handler.UtcTimeOff == TimeSpan.Zero) // ignore timelines that are unset
                 return;
-        
-            var isOvernight = timeOff < timeOn;
 
-            _log.Debug(
-                $"For {handler.HandlerType}: Local time: {DateTime.Now.TimeOfDay} UTC: {DateTime.UtcNow.TimeOfDay} On: {timeOn} Off: {timeOff} Overnight? {isOvernight}");
+            _log.Debug($"For {handler.HandlerType}: Current UTC: {utcNow} On: {timeOnUtc} Off: {timeOffUtc} Overnight? {isOvernight}");
 
-            if (isOvernight)
+            // Adjust times for overnight schedules
+            if (isOvernight && utcNow > timeOffUtc)
             {
-                while (DateTime.UtcNow.TimeOfDay < timeOn)
+                timeOnUtc = timeOnUtc.AddDays(1);
+                timeOffUtc = timeOffUtc.AddDays(1);
+            }
+
+            // Determine next action time
+            var nextActionTime = (utcNow < timeOnUtc) ? timeOnUtc : (utcNow > timeOffUtc && !isOvernight) ? timeOnUtc.AddDays(1) : DateTime.MaxValue;
+
+            // Handle custom time blocks
+            if (handler.UtcTimeBlocks != null && handler.UtcTimeBlocks.Length >= 2)
+            {
+                var isInTimeBlock = false;
+                for (var i = 0; i < handler.UtcTimeBlocks.Length; i += 2)
                 {
-                    var sleep = Math.Abs((timeOn - DateTime.UtcNow.TimeOfDay).TotalMilliseconds);
-                    if (sleep > 300000)
-                        sleep = 300000;
-                    Sleep(handler, Convert.ToInt32(sleep));
+                    if (i + 1 >= handler.UtcTimeBlocks.Length) break;
+
+                    var startTime = today.Add(handler.UtcTimeBlocks[i]);
+                    var endTime = today.Add(handler.UtcTimeBlocks[i + 1]);
+
+                    if (utcNow >= startTime && utcNow <= endTime)
+                    {
+                        Console.WriteLine($"Current time is within the block: {startTime} to {endTime}");
+                        isInTimeBlock = true;
+                        break;
+                    }
+
+                    if (startTime > utcNow && startTime < nextActionTime)
+                    {
+                        nextActionTime = startTime;
+                    }
+                }
+
+                if (!isInTimeBlock && nextActionTime == DateTime.MaxValue) // If not in a block and no next action time was found
+                {
+                    var nextStartTime = handler.UtcTimeBlocks.Where(t => today.Add(t) > utcNow).Min();
+                    nextActionTime = today.Add(nextStartTime);
                 }
             }
-            else
-            {
-                while (DateTime.UtcNow.TimeOfDay < timeOn ||
-                       DateTime.UtcNow.TimeOfDay > timeOff)
-                {
-                    Sleep(handler, 60000);
-                }
-            }
+
+            // Calculate sleep duration if needed
+            if (nextActionTime == DateTime.MaxValue) return;
+            var sleepDuration = (int)(nextActionTime - utcNow).TotalMilliseconds;
+            Console.WriteLine($"Sleeping for {sleepDuration} milliseconds until the next action time.");
+            Sleep(handler, sleepDuration);
         }
 
-        private static void Sleep(TimelineHandler handler, int sleep)
+        private static void Sleep(TimelineHandler handler, int msToSleep)
         {
-            _log.Trace($"Sleeping for {sleep}");
-            Thread.Sleep(sleep);
+            _log.Trace($"{handler} sleeping for {msToSleep} ms");
+            Thread.Sleep(msToSleep);
         }
     }
 }

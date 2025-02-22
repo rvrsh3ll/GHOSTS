@@ -12,6 +12,11 @@ namespace Ghosts.Domain.Code
     {
         private static readonly Random _random = new Random();
 
+        public static int GetSafeSleepTime(this int x, int y)
+        {
+            return x - y < 0 ? 0 : x - y;
+        }
+
         public static int Randomize(object baseSleepValue, object lowJitter, object highJitter)
         {
             var newSleepValue = Convert.ToInt32(baseSleepValue);
@@ -43,7 +48,7 @@ namespace Ghosts.Domain.Code
 
             return newSleepValue;
         }
-        
+
         public static int Basic(int baseSleep)
         {
             //sleep with jitter
@@ -54,5 +59,33 @@ namespace Ghosts.Domain.Code
                 sleep = 1;
             return sleep;
         }
+
+
+        /// <summary>
+        /// The jstring is expected to be a decimal integer string between 0 and 50
+        /// which represents a +/-%window about a base value
+        /// </summary>
+        /// <param name="jstring"></param>
+        /// <returns></returns>
+        public static int JitterFactorParse(string jstring)
+        {
+            if (int.TryParse(jstring, out var jitterFactor))
+            {
+                if (jitterFactor < 0 || jitterFactor > 50) jitterFactor = 0;
+            }
+            else
+            {
+                jitterFactor = 0;
+            }
+            return jitterFactor;
+        }
+
+        public static int JitterFactorDelay(int baseSleep, int jitterFactor)
+        {
+            if (jitterFactor == 0) return baseSleep;
+            return _random.Next(baseSleep - ((baseSleep * jitterFactor) / 100), baseSleep + ((baseSleep * jitterFactor) / 100));
+        }
+
+
     }
 }

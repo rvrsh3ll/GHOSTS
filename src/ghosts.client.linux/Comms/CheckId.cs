@@ -27,7 +27,8 @@ namespace ghosts.client.linux.Comms
 
         public CheckId()
         {
-            _log.Trace($"CheckId instantiated with ID: {Id}");
+            _log.Info("CheckId instance created.");
+            _log.Debug($"CheckId instantiated with ID File Path: {IdFile}");
         }
 
         /// <summary>
@@ -37,32 +38,53 @@ namespace ghosts.client.linux.Comms
         {
             get
             {
+                _log.Trace("Id property getter invoked.");
+
                 if (!string.IsNullOrEmpty(_id))
+                {
+                    _log.Debug($"Returning cached ID: {_id}");
                     return _id;
+                }
 
                 try
                 {
                     if (!File.Exists(IdFile))
                     {
+                        _log.Warn($"ID file not found at path: {IdFile}");
+
                         if (DateTime.Now > _lastChecked.AddMinutes(5))
                         {
-                            _log.Error("Skipping Check for ID from server, too many requests in a short amount of time...");
+                            _log.Error("Skipping check for ID from server due to recent check within 5 minutes.");
                             return string.Empty;
                         }
 
+                        _log.Info("Attempting to retrieve ID from server.");
                         _lastChecked = DateTime.Now;
-                        return Run();
+                        _id = Run();
+
+                        if (string.IsNullOrEmpty(_id))
+                        {
+                            _log.Warn("Retrieved ID is empty after attempting to fetch from server.");
+                        }
+
+                        return _id;
                     }
-                    Id = File.ReadAllText(IdFile);
+
+                    _id = File.ReadAllText(IdFile).Trim();
+                    _log.Info($"ID retrieved from local file: {_id}");
                     return _id;
                 }
-                catch
+                catch (Exception ex)
                 {
-                    _log.Error("No ID file");
+                    _log.Error(ex, "Exception occurred while retrieving ID.");
                     return string.Empty;
                 }
             }
-            set => _id = value;
+            set
+            {
+                _log.Debug($"Setting ID to: {value}");
+                _id = value;
+            }
         }
 
         /// <summary>
@@ -71,70 +93,146 @@ namespace ghosts.client.linux.Comms
         /// <returns></returns>
         private string Run()
         {
-            // ignore all certs
-            ServicePointManager.ServerCertificateValidationCallback += (sender, cert, chain, sslPolicyErrors) => true;
+            _log.Trace("Run method started: Attempting to fetch ID from server.");
 
-            var s = string.Empty;
+            // Ignore all certs
+            ServicePointManager.ServerCertificateValidationCallback += (_, _, _, _) => true;
 
-            if (!Program.Configuration.IdEnabled)
+            var fetchedId = string.Empty;
+
+            if (!Program.Configuration.Id.IsEnabled)
             {
-                return s;
+                _log.Warn("ID retrieval is disabled in the configuration.");
+                return fetchedId;
             }
 
             var machine = new ResultMachine();
-            
+
             try
             {
-                //call home
-                using (var client = WebClientBuilder.BuildNoId(machine))
+                // Call home
+                using (var client = WebClientBuilder.Build(machine, false))
                 {
                     try
                     {
-                        using (var reader =
-                            new StreamReader(client.OpenRead(Program.Configuration.IdUrl) ?? throw new InvalidOperationException("CheckID client is null")))
+                        _log.Info($"Attempting to connect to ID endpoint: {Program.ConfigurationUrls.Id}");
+
+                        using (var responseStream = client.OpenRead(Program.ConfigurationUrls.Id))
                         {
-                            s = reader.ReadToEnd();
-                            _log.Debug("ID Received");
+                            if (responseStream == null)
+                            {
+                                _log.Error("Received null response stream from ID endpoint.");
+                                return fetchedId;
+                            }
+
+                            using (var reader = new StreamReader(responseStream))
+                            {
+                                fetchedId = reader.ReadToEnd().Trim();
+                                _log.Info($"ID successfully received from server: {fetchedId}");
+                            }
                         }
                     }
                     catch (WebException wex)
                     {
+                        _log.Warn(wex, "WebException occurred while attempting to fetch ID.");
+
                         if (wex.Message.StartsWith("The remote name could not be resolved:"))
                         {
-                            _log.Debug($"API not reachable: {wex.Message}");
+                            _log.Warn($"API not reachable: {wex.Message}");
                         }
-                        else if (((HttpWebResponse)wex.Response).StatusCode == HttpStatusCode.NotFound)
+                        else if (wex.Response is HttpWebResponse response &&
+                                 response.StatusCode == HttpStatusCode.NotFound)
                         {
-                            _log.Debug($"No ID returned! {wex.Message}");
+                            _log.Warn($"ID not found (404): {wex.Message}");
+                        }
+                        else
+                        {
+                            _log.Error(wex, $"WebException encountered: {wex.Message}");
                         }
                     }
                     catch (Exception e)
                     {
-                        _log.Error($"General comms exception: {e.Message}");
+                        _log.Error(e, $"Unexpected exception during ID retrieval: {e.Message}");
                     }
                 }
             }
             catch (Exception e)
             {
-                _log.Error($"Cannot connect to API: {e.Message}");
+                _log.Error(e, $"Cannot connect to API: {e.Message}");
                 return string.Empty;
             }
 
-            s = s.Replace("\"", "");
+            // Remove potential surrounding quotes
+            fetchedId = fetchedId.Replace("\"", "");
 
             if (!Directory.Exists(ApplicationDetails.InstanceFiles.Path))
             {
-                Directory.CreateDirectory(ApplicationDetails.InstanceFiles.Path);
+                try
+                {
+                    Directory.CreateDirectory(ApplicationDetails.InstanceFiles.Path);
+                    _log.Info($"Created directory for ID file: {ApplicationDetails.InstanceFiles.Path}");
+                }
+                catch (Exception ex)
+                {
+                    _log.Error(ex, $"Failed to create directory: {ApplicationDetails.InstanceFiles.Path}");
+                    return string.Empty;
+                }
             }
 
-            if (string.IsNullOrEmpty(s))
+            if (string.IsNullOrEmpty(fetchedId))
             {
+                _log.Warn("Fetched ID is empty after processing.");
                 return string.Empty;
             }
 
-            //save returned id
-            File.WriteAllText(IdFile, s);
-            return s;
+            try
+            {
+                // Save returned ID
+                File.WriteAllText(IdFile, fetchedId);
+                _log.Info($"ID successfully written to file: {IdFile}");
+            }
+            catch (Exception ex)
+            {
+                _log.Error(ex, $"Failed to write ID to file: {IdFile}");
+                return string.Empty;
+            }
+
+            return fetchedId;
+        }
+
+        /// <summary>
+        /// Writes the provided ID to the ID file, ensuring proper formatting and directory existence.
+        /// </summary>
+        /// <param name="id">The ID to write.</param>
+        public static void WriteId(string id)
+        {
+            _log.Trace("WriteId method invoked.");
+
+            if (string.IsNullOrEmpty(id))
+            {
+                _log.Warn("Attempted to write an empty or null ID.");
+                return;
+            }
+
+            try
+            {
+                _log.Debug($"Received ID for writing: {id}");
+                id = id.Replace("\"", "").Trim();
+
+                if (!Directory.Exists(ApplicationDetails.InstanceFiles.Path))
+                {
+                    Directory.CreateDirectory(ApplicationDetails.InstanceFiles.Path);
+                    _log.Info($"Created directory for ID file: {ApplicationDetails.InstanceFiles.Path}");
+                }
+
+                // Save returned ID
+                File.WriteAllText(ApplicationDetails.InstanceFiles.Id, id);
+                _log.Info($"ID successfully written to file: {ApplicationDetails.InstanceFiles.Id}");
+            }
+            catch (Exception ex)
+            {
+                _log.Error(ex, $"Failed to write ID to file: {ApplicationDetails.InstanceFiles.Id}");
+            }
         }
     }
 }

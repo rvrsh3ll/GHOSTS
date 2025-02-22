@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Ghosts.Domain.Code.Helpers
@@ -14,11 +15,23 @@ namespace Ghosts.Domain.Code.Helpers
             return o.Split(new[] { splitString }, StringSplitOptions.None);
         }
 
+        /// <summary>
+        /// Regex to keep only ASCII printable characters and newlines
+        /// </summary>
+        public static string RemoveNonAscii(this string input)
+        {
+            if (!string.IsNullOrEmpty(input))
+            {
+                input = Regex.Replace(input, @"[^\x20-\x7E\r\n]", string.Empty);
+            }
+            return input;
+        }
+
         public static string GetTextBetweenQuotes(this string o)
         {
             var result = Regex.Match(o, "\"([^\"]*)\"").ToString();
             if (!string.IsNullOrEmpty(result))
-                result = result.TrimStart('"').TrimEnd('"');
+                result = result.Trim().TrimStart('"').TrimEnd('"');
             return result;
         }
 
@@ -49,7 +62,7 @@ namespace Ghosts.Domain.Code.Helpers
         {
             return string.Join("&", dictionary.Select(x => x.Key + "=" + x.Value).ToArray());
         }
-        
+
         public static readonly string[] SizeSuffixes = { "bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
         public static string ToMemorySizeString(this long value)
         {
@@ -71,6 +84,33 @@ namespace Ghosts.Domain.Code.Helpers
             return $"{adjustedSize:n} {SizeSuffixes[mag]}";
         }
 
+        public static string RemoveTextBetweenMarkers(this string input, string startMarker, string endMarker)
+        {
+            if (string.IsNullOrEmpty(input) || string.IsNullOrEmpty(startMarker) || string.IsNullOrEmpty(endMarker))
+            {
+                return input;
+            }
+
+            input = input.TrimEnd('.');
+
+            var result = new StringBuilder(input);
+            var startIndex = 0;
+
+            while ((startIndex = result.ToString().IndexOf(startMarker, startIndex, StringComparison.OrdinalIgnoreCase)) != -1)
+            {
+                var endIndex = result.ToString().IndexOf(endMarker, startIndex, StringComparison.OrdinalIgnoreCase);
+                if (endIndex == -1)
+                {
+                    break;
+                }
+                endIndex += endMarker.Length;
+
+                // Remove the substring from startIndex to endIndex
+                result.Remove(startIndex, endIndex - startIndex);
+            }
+
+            return result.ToString().Replace("\n", "");
+        }
     }
 
 }

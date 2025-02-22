@@ -7,11 +7,12 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTitle("GHOSTS NPC Orchestrator")]
 [assembly: AssemblyDescription("GHOSTS Client")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("CMU > SEI > CERT > MSE > Realism Team")]
-[assembly: AssemblyProduct("GHOSTS NPC Framework Client - please email ddupdyke[at]sei.cmu.edu with bugs/requests/other")]
-[assembly: AssemblyCopyright("Copyright © 2017 - 2022")]
+[assembly: AssemblyCompany("CMU > SEI > CERT > MSE > Simulation Team")]
+[assembly: AssemblyProduct("GHOSTS NPC Framework Client - please email ddupdyke [-at*] sei.cmu.edu with bugs/requests/other")]
+[assembly: AssemblyCopyright("Copyright © 2017 - 2023")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
+
 
 // Setting ComVisible to false makes the types in this assembly not visible
 // to COM components.  If you need to access a type in this assembly from
@@ -31,6 +32,6 @@ using System.Runtime.InteropServices;
 // You can specify all the values or you can default the Build and Revision Numbers
 // by using the '*' as shown below:
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("6.2.0.0")]
-[assembly: AssemblyInformationalVersion("6.2.0.0")]
-[assembly: AssemblyFileVersion("6.2.5.0")]
+[assembly: AssemblyVersion("8.0.0.0")]
+[assembly: AssemblyInformationalVersion("8.0.0.0")]
+[assembly: AssemblyFileVersion("8.2.2.0")]

@@ -1,6 +1,7 @@
 ﻿// Copyright 2017 Carnegie Mellon University. All Rights Reserved. See LICENSE.md file for terms.
 
 using System;
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -96,12 +97,17 @@ namespace Ghosts.Domain
 
         private static string GetLocalIPAddress()
         {
-            if (NetworkInterface.GetIsNetworkAvailable())
+            try
             {
-                var host = Dns.GetHostEntry(Dns.GetHostName());
-                foreach (var ip in host.AddressList)
-                    if (ip.AddressFamily == AddressFamily.InterNetwork)
-                        return ip.ToString();
+                if (NetworkInterface.GetIsNetworkAvailable())
+                {
+                    var host = Dns.GetHostEntry(Dns.GetHostName());
+                    return host.AddressList.FirstOrDefault(x => x.AddressFamily == AddressFamily.InterNetwork)?.ToString();
+                }
+            }
+            catch
+            {
+                // ignore
             }
 
             return "-9";

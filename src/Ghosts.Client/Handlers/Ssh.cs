@@ -1,22 +1,16 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.IO;
 using System.Threading;
 using Renci.SshNet;
 using Ghosts.Client.Infrastructure;
 using Ghosts.Domain;
-using System.Net;
-using System.Diagnostics;
 using Newtonsoft.Json;
+using Ghosts.Domain.Code;
 
 /*
  * Used Package Renci.sshNet
  * Installed via packag manager
  * Install-Package SSH.NET
- * 
  */
 
 namespace Ghosts.Client.Handlers
@@ -36,6 +30,7 @@ namespace Ghosts.Client.Handlers
 
         private Credentials CurrentCreds = null;
         private SshSupport CurrentSshSupport = null;   //current SshSupport for this object
+        public int jitterfactor = 0;
 
         public Ssh(TimelineHandler handler)
         {
@@ -102,6 +97,10 @@ namespace Ghosts.Client.Handlers
                             Log.Error(e);
                         }
                     }
+                    if (handler.HandlerArgs.ContainsKey("delay-jitter"))
+                    {
+                        jitterfactor = Jitter.JitterFactorParse(handler.HandlerArgs["delay-jitter"].ToString());
+                    }
                 }
 
 
@@ -120,8 +119,7 @@ namespace Ghosts.Client.Handlers
             }
             catch (ThreadAbortException)
             {
-                ProcessManager.KillProcessAndChildrenByName(ProcessManager.ProcessNames.Command);
-                Log.Trace("Cmd closing...");
+                Log.Trace("Ssh closing...");
             }
             catch (Exception e)
             {
@@ -135,34 +133,25 @@ namespace Ghosts.Client.Handlers
             {
                 WorkingHours.Is(handler);
 
-                if (timelineEvent.DelayBefore > 0)
-                    Thread.Sleep(timelineEvent.DelayBefore);
+                if (timelineEvent.DelayBeforeActual > 0)
+                    Thread.Sleep(timelineEvent.DelayBeforeActual);
 
-                Log.Trace($"SSH Command: {timelineEvent.Command} with delay after of {timelineEvent.DelayAfter}");
+                Log.Trace($"SSH Command: {timelineEvent.Command} with delay after of {timelineEvent.DelayAfterActual}");
 
                 switch (timelineEvent.Command)
                 {
                     case "random":
-                        while (true)
+                        var cmd = timelineEvent.CommandArgs[_random.Next(0, timelineEvent.CommandArgs.Count)];
+                        if (!string.IsNullOrEmpty(cmd.ToString()))
                         {
-                            var cmd = timelineEvent.CommandArgs[_random.Next(0, timelineEvent.CommandArgs.Count)];
-                            if (!string.IsNullOrEmpty(cmd.ToString()))
-                            {
-                                this.Command(handler, timelineEvent, cmd.ToString());
-                            }
-                            Thread.Sleep(timelineEvent.DelayAfter);
+                            this.Command(handler, timelineEvent, cmd.ToString());
                         }
-                    default:
-                        this.Command(handler, timelineEvent, timelineEvent.Command);
-
-                        foreach (var cmd in timelineEvent.CommandArgs)
-                            if (!string.IsNullOrEmpty(cmd.ToString()))
-                                this.Command(handler, timelineEvent, cmd.ToString());
+                        Thread.Sleep(Jitter.JitterFactorDelay(timelineEvent.DelayAfterActual, jitterfactor));
                         break;
                 }
 
-                if (timelineEvent.DelayAfter > 0)
-                    Thread.Sleep(timelineEvent.DelayAfter);
+                if (timelineEvent.DelayAfterActual > 0)
+                    Thread.Sleep(Jitter.JitterFactorDelay(timelineEvent.DelayAfterActual, jitterfactor)); ;
             }
         }
 
@@ -189,6 +178,10 @@ namespace Ghosts.Client.Handlers
                     {
                         client.Connect();
                     }
+                    catch (ThreadAbortException)
+                    {
+                        throw;  //pass up
+                    }
                     catch (Exception e)
                     {
                         Log.Error(e);
@@ -202,7 +195,11 @@ namespace Ghosts.Client.Handlers
                     {
                         try
                         {
-                            this.CurrentSshSupport.RunSshCommand(shellStreamSSH, sshCmd);
+                            this.CurrentSshSupport.RunSshCommand(shellStreamSSH, sshCmd.Trim());
+                        }
+                        catch (ThreadAbortException)
+                        {
+                            throw;  //pass up
                         }
                         catch (Exception e)
                         {
@@ -211,16 +208,10 @@ namespace Ghosts.Client.Handlers
                     }
                     client.Disconnect();
                     client.Dispose();
-                    this.Report(handler.HandlerType.ToString(), command, "", timelineEvent.TrackableId);
+                    Report(new ReportItem { Handler = handler.HandlerType.ToString(), Command = hostIp, Arg = cmdArgs[2], Trackable = timelineEvent.TrackableId });
                 }
             }
 
         }
-
-
-
-
-
     }
-
 }

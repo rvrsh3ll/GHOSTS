@@ -2,22 +2,25 @@
 
 using System;
 using System.Linq;
-using Ghosts.Api.Infrastructure;
 using Ghosts.Api.Infrastructure.Data;
+using Ghosts.Domain.Code;
 using Microsoft.AspNetCore.Mvc;
+using NLog;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace Ghosts.Api.Controllers
 {
-    [Produces("application/json")]
-    [Route("api/home")]
-    [ResponseCache(Duration = 60)]
-    public class HomeController : Controller
+    [Route("/")]
+    public class HomeController(ApplicationDbContext context) : Controller
     {
-        private readonly ApplicationDbContext _context;
+        private static readonly Logger _log = LogManager.GetCurrentClassLogger();
+        private readonly ApplicationDbContext _context = context;
 
-        public HomeController(ApplicationDbContext context)
+        [HttpGet]
+        [ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult Index()
         {
-            _context = context;
+            return View();
         }
 
         /// <summary>
@@ -27,32 +30,41 @@ namespace Ghosts.Api.Controllers
         /// Basic check information including version number,
         /// and a simple database connection counting machines and groups
         /// </returns>
-        [HttpGet]
-        public IActionResult Index()
+        [Produces("application/json")]
+        [ResponseCache(Duration = 60)]
+        [SwaggerOperation("HomeTestApi")]
+        [HttpGet("test")]
+        public IActionResult Test()
         {
-            var s = new Status();
-            s.Version = ApiDetails.Version;
-            s.Created = DateTime.UtcNow;
+            var status = new Status
+            {
+                Version = ApplicationDetails.Version,
+                VersionFile = ApplicationDetails.VersionFile,
+                Created = DateTime.UtcNow
+            };
 
             try
             {
-                s.Machines = _context.Machines.Count();
-                s.Groups = _context.Groups.Count();
+                status.Machines = _context.Machines.Count();
+                status.Groups = _context.Groups.Count();
+                status.Npcs = _context.Npcs.Count();
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
-                throw;
+                _log.Error(e, "An error occurred while counting database entities.");
+                return StatusCode(500, "Internal server error");
             }
 
-            return Json(s);
+            return Json(status);
         }
 
         public class Status
         {
             public string Version { get; set; }
+            public string VersionFile { get; set; }
             public int Machines { get; set; }
             public int Groups { get; set; }
+            public int Npcs { get; set; }
             public DateTime Created { get; set; }
         }
     }

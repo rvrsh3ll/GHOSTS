@@ -8,6 +8,7 @@ using System.Net;
 using System.Reflection;
 using System.Threading;
 using ghosts.client.linux.Comms;
+using ghosts.client.linux.Comms.ClientSocket;
 using ghosts.client.linux.Infrastructure;
 using ghosts.client.linux.timelineManager;
 using Ghosts.Domain.Code;
@@ -19,16 +20,18 @@ namespace ghosts.client.linux
     internal static class Program
     {
         internal static ClientConfiguration Configuration { get; private set; }
+        internal static ApplicationDetails.ConfigurationUrls ConfigurationUrls { get; set; }
         internal static bool IsDebug;
         internal static List<ThreadJob> ThreadJobs { get; private set; }
         private static readonly Logger _log = LogManager.GetCurrentClassLogger();
         public static CheckId CheckId { get; set; }
+        internal static BackgroundTaskQueue Queue;
 
         private static void Main(string[] args)
         {
             ThreadJobs = new List<ThreadJob>();
             ClientConfigurationLoader.UpdateConfigurationWithEnvVars();
-            
+
             try
             {
                 Run(args);
@@ -60,6 +63,7 @@ namespace ghosts.client.linux
             try
             {
                 Configuration = ClientConfigurationLoader.Config;
+                ConfigurationUrls = new ApplicationDetails.ConfigurationUrls(Configuration.ApiRootUrl);
             }
             catch (Exception e)
             {
@@ -70,7 +74,22 @@ namespace ghosts.client.linux
                 Console.ReadLine();
                 return;
             }
-            
+
+            if (Configuration.Sockets.IsEnabled)
+            {
+                _log.Trace("Sockets enabled. Connecting...");
+                var c = new Connection(Configuration.Sockets);
+
+                async void Start()
+                {
+                    await c.Run();
+                }
+
+                var connectionThread = new Thread(Start) { IsBackground = true };
+                connectionThread.Start();
+                Queue = c.Queue;
+            }
+
             Program.CheckId = new CheckId();
 
             //linux clients do not catch stray processes or check for job duplication
@@ -78,7 +97,7 @@ namespace ghosts.client.linux
             StartupTasks.SetStartup();
 
             ListenerManager.Run();
-            
+
             //do we have client id? or is this first run?
             _log.Trace($"CheckID: {Program.CheckId.Id}");
 

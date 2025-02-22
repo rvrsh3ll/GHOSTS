@@ -1,6 +1,7 @@
 ﻿// Copyright 2017 Carnegie Mellon University. All Rights Reserved. See LICENSE.md file for terms.
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using ghosts.client.linux.handlers;
@@ -18,13 +19,28 @@ namespace ghosts.client.linux.timelineManager
     {
         private static readonly Logger _log = LogManager.GetCurrentClassLogger();
         private Thread MonitorThread { get; set; }
+        private FileSystemWatcher _stopfileWatcher;  //watches for changes to config/stop.txt indicating a stop request
 
         public void Run()
         {
             try
             {
-                var timeline = TimelineBuilder.GetLocalTimeline();
-            
+                var timeline = TimelineBuilder.GetTimeline();
+
+                var dirName = TimelineBuilder.TimelineFilePath().DirectoryName;
+
+                if (_stopfileWatcher == null && dirName != null)
+                {
+
+                    _log.Trace("Stopfile watcher is starting");
+                    _stopfileWatcher = new FileSystemWatcher(dirName);
+                    var stopFile = "stop.txt";
+                    _stopfileWatcher.Filter = stopFile;
+                    _stopfileWatcher.EnableRaisingEvents = true;
+                    _stopfileWatcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Attributes;
+                    _stopfileWatcher.Changed += StopFileChanged;
+                }
+
                 //load into an managing object
                 //which passes the timeline commands to handlers
                 //and creates a thread to execute instructions over that timeline
@@ -34,9 +50,9 @@ namespace ghosts.client.linux.timelineManager
                 }
                 else
                 {
-                    if (this.MonitorThread == null) return;
-                    this.MonitorThread.Interrupt();
-                    this.MonitorThread = null;
+                    if (MonitorThread == null) return;
+                    MonitorThread.Interrupt();
+                    MonitorThread = null;
                 }
             }
             catch (Exception exc)
@@ -47,7 +63,7 @@ namespace ghosts.client.linux.timelineManager
 
         public static void StopTimeline(Guid timelineId)
         {
-            foreach (var threadJob in Program.ThreadJobs.Where(x=>x.TimelineId == timelineId))
+            foreach (var threadJob in Program.ThreadJobs.Where(x => x.TimelineId == timelineId))
             {
                 try
                 {
@@ -92,6 +108,41 @@ namespace ghosts.client.linux.timelineManager
                 }
             }
         }
+
+
+
+        private static void StopCommon()
+        {
+            try
+            {
+                _log.Trace("Stopping all threads.");
+                Stop();
+                _log.Trace("All threads have been stopped.");
+            }
+            catch (Exception exception)
+            {
+                _log.Info(exception);
+            }
+
+        }
+
+        private void StopFileChanged(object source, FileSystemEventArgs e)
+        {
+            try
+            {
+                _log.Trace($"Stop file Watcher event raised: {e.FullPath} {e.Name} {e.ChangeType}");
+                _log.Trace("Terminating existing tasks and exiting orchestrator");
+                StopCommon();
+                Thread.Sleep(5000);
+                LogManager.Shutdown();  //shutdown all logging
+                System.Environment.Exit(0); //exit
+            }
+            catch (Exception exc)
+            {
+                _log.Info(exc);
+            }
+        }
+
 
         private static void RunEx(Timeline timeline)
         {
@@ -146,6 +197,36 @@ namespace ghosts.client.linux.timelineManager
                             o = new BrowserFirefox(handler);
                         });
                         break;
+                    case HandlerType.Ssh:
+                        t = new Thread(() =>
+                        {
+                            _ = new Ssh(handler);
+                        });
+                        break;
+                    case HandlerType.Sftp:
+                        t = new Thread(() =>
+                        {
+                            _ = new Sftp(handler);
+                        });
+                        break;
+                    case HandlerType.Watcher:
+                        t = new Thread(() =>
+                        {
+                            o = new Watcher(handler);
+                        });
+                        break;
+                    case HandlerType.Aws:
+                        t = new Thread(() =>
+                        {
+                            o = new Aws(handler);
+                        });
+                        break;
+                    case HandlerType.Azure:
+                        t = new Thread(() =>
+                        {
+                            o = new Azure(handler);
+                        });
+                        break;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
@@ -155,7 +236,7 @@ namespace ghosts.client.linux.timelineManager
                     _log.Debug($"HandlerType {handler.HandlerType} not supported on this platform");
                     return;
                 }
-                
+
                 t.IsBackground = true;
                 t.Start();
                 Program.ThreadJobs.Add(new ThreadJob
@@ -170,4 +251,4 @@ namespace ghosts.client.linux.timelineManager
             }
         }
     }
- }
+}

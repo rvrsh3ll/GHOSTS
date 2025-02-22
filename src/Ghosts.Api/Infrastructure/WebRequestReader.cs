@@ -2,14 +2,16 @@
 
 using System;
 using System.Text.RegularExpressions;
-using Ghosts.Api.Models;
+using ghosts.api.Infrastructure.Models;
 using Ghosts.Domain.Code;
 using Microsoft.AspNetCore.Http;
+using NLog;
 
 namespace Ghosts.Api.Infrastructure
 {
-    public static class WebRequestReader
+    public static partial class WebRequestReader
     {
+        private static readonly Logger _log = LogManager.GetCurrentClassLogger();
         public static Machine GetMachine(HttpContext context)
         {
             try
@@ -24,7 +26,7 @@ namespace Ghosts.Api.Infrastructure
                     HostIp = context.Request.Headers["ghosts-ip"],
                     CurrentUsername = CheckIfBase64Encoded(context.Request.Headers["ghosts-user"]),
                     ClientVersion = context.Request.Headers["ghosts-version"],
-                    IPAddress = context.Connection.RemoteIpAddress.ToString(),
+                    IPAddress = context.Connection.RemoteIpAddress?.ToString(),
                     StatusUp = Machine.UpDownStatus.Up
                 };
 
@@ -37,15 +39,18 @@ namespace Ghosts.Api.Infrastructure
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
+                _log.Error(e);
                 throw;
             }
         }
 
         private static string CheckIfBase64Encoded(string raw)
         {
-            var reg = new Regex("^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)?$");
+            var reg = MyRegex();
             return reg.IsMatch(raw) ? Base64Encoder.Base64Decode(raw) : raw;
         }
+
+        [GeneratedRegex("^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)?$")]
+        private static partial Regex MyRegex();
     }
 }

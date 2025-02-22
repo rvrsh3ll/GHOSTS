@@ -3,6 +3,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using NLog;
@@ -13,7 +14,7 @@ namespace Ghosts.Domain.Code
     {
         private static readonly Logger _log = LogManager.GetCurrentClassLogger();
 
-        public static string Header => 
+        public static string Header =>
 @"             ('-. .-.               .-')    .-') _     .-')    
             ( OO )  /              ( OO ). (  OO) )   ( OO ).  
   ,----.    ,--. ,--. .-'),-----. (_)---\_)/     '._ (_)---\_) 
@@ -22,7 +23,9 @@ namespace Ghosts.Domain.Code
  |  | .--, \|       |\_) |  |\|  | '..`''.)   |  |    '..`''.) 
 (|  | '. (_/|  .-.  |  \ |  | |  |.-._)   \   |  |   .-._)   \ 
  |  '--'  | |  | |  |   `'  '-'  '\       /   |  |   \       / 
-  `------'  `--' `--'     `-----'  `-----'    `--'    `-----'  ";
+  `------'  `--' `--'     `-----'  `-----'    `--'    `-----'  
+
+";
 
         /// <summary>
         ///     Returns current GHOSTS exe name
@@ -56,9 +59,14 @@ namespace Ghosts.Domain.Code
                 }
                 catch
                 {
-                    return Assembly.GetEntryAssembly()?.Location;
+                    return Clean(Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location));
                 }
             }
+        }
+
+        public static string GetPath(string loc)
+        {
+            return Path.GetFullPath(Path.Combine(InstalledPath, loc));
         }
 
         public static bool IsLinux()
@@ -93,13 +101,15 @@ namespace Ghosts.Domain.Code
         /// </summary>
         public static class ConfigurationFiles
         {
-            public static string Path => InstalledPath + $"{System.IO.Path.DirectorySeparatorChar}config{System.IO.Path.DirectorySeparatorChar}";
+            public static string InstallPath => InstalledPath + $"{System.IO.Path.DirectorySeparatorChar}config{System.IO.Path.DirectorySeparatorChar}";
 
-            public static string Application => Clean(Path + "application.json");
-            public static string Health => Clean(Path + "health.json");
-            public static string Timeline => Clean(Path + "timeline.json");
+            public static string DefaultNpcImage => Clean(Path.Combine(InstallPath, "photos", "default.png"));
+            public static string Application => Clean(InstallPath + "application.json");
+            public static string Health => Clean(InstallPath + "health.json");
+            public static string Timeline => Clean(InstallPath + "timeline.json");
 
-            public static string DenyList => Clean(Path + "denylist.txt");
+            public static string DenyList => Clean(InstallPath + "denylist.txt");
+            public static string EmailsFooter => Clean(InstallPath + "emails-footer.txt");
 
             public static string EmailContent(string raw) => Determine(raw, "email-content.csv");
             public static string EmailReply(string raw) => Determine(raw, "email-reply.csv");
@@ -108,9 +118,20 @@ namespace Ghosts.Domain.Code
             public static string Dictionary(string raw) => Determine(raw, "dictionary.json");
             public static string FileNames(string raw) => Determine(raw, "filenames.txt");
 
+            public static string ChatMessages(string raw) => Determine(raw, "blog-reply.csv");  //lazy, use blog-reply for now
+            public static string LastNames(string raw) => Determine(raw, "last_names.txt");
+            public static string FirstNames(string raw) => Determine(raw, "first_names.txt");
+            public static string EmailTargets(string raw) => Determine(raw, "email_targets.txt");
+
+            //be lazy and use the Blog content as generic post content as default
+            public static string GenericPostContent(string raw) => Determine(raw, "blog-content.csv");
+            public static string BlogContent(string raw) => Determine(raw, "blog-content.csv");
+
+            public static string BlogReply(string raw) => Determine(raw, "blog-reply.csv");
+
             private static string Determine(string raw, string defaultValue)
             {
-                return !string.IsNullOrEmpty(raw) ? raw : Clean(Path + defaultValue);
+                return !string.IsNullOrEmpty(raw) ? raw : Clean(InstallPath + defaultValue);
             }
         }
 
@@ -130,6 +151,7 @@ namespace Ghosts.Domain.Code
             public static string Id => Clean(Path + "id.json");
             public static string SurveyResults => Clean(Path + "survey-results.json");
             public static string FilesCreated => Clean(Path + "files-created.log");
+            public static string Trackables => Clean(Path + "trackables.json");
         }
 
         public static class InstanceDirectories
@@ -152,6 +174,22 @@ namespace Ghosts.Domain.Code
             public static string Path => InstalledPath + $"{System.IO.Path.DirectorySeparatorChar}logs{System.IO.Path.DirectorySeparatorChar}";
 
             public static string ClientUpdates => Clean(Path + "clientupdates.log");
+        }
+
+        public class ConfigurationUrls
+        {
+            public ConfigurationUrls(string rootUrl)
+            {
+                _root = rootUrl;
+            }
+
+            private readonly string _root;
+            public string Id => $"{_root}/clientid";
+            public string Timeline => $"{_root}/clienttimeline";
+            public string Results => $"{_root}/clientresults";
+            public string Updates => $"{_root}/clientupdates";
+            public string Survey => $"{_root}/clientsurvey";
+            public string Socket => $"{_root.Replace("/api", "")}/clientHub";
         }
     }
 }
